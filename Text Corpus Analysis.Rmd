@@ -1,0 +1,333 @@
+---
+title: "Text Analysis"
+output:
+  word_document: default
+  html_document: default
+date: "2023-06-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Introduction
+
+Three different topics were used in the analysis; inflation analysis in the United States (causes and impacts), impacts and catalysts of climate change and movie reviews of All American series. Each document met the requirement of the assignment whereby more than 100 words were used for each article. Copy and paste method was used to extract text information from the articles. The information was pasted to word and saved as plain text for analysis. The data was then imported into R via a file path to the directory to make it easeir to access all the documents. The documents were then changed to character vector form and then to corpus form. 
+
+Data Importation
+
+```{r}
+# Specify the directory where the documents are saved
+directory <- "C:/Users/Administrator/Documents/R WORK/Text Analysis/New folder"
+
+# List all the files in the directory
+files <- list.files(directory, pattern = "*.txt", full.names = TRUE)
+
+# Create an empty corpus
+corpus <- Corpus(VectorSource(character(length(files))))
+
+# Import the documents into the corpus with their correct names
+for (i in seq_along(files)) {
+  doc_name <- basename(files[i])  # Extract the document name from the file path
+  content <- readLines(files[i], warn = FALSE)  # Read the content of the document
+  corpus[[doc_name]] <- content  # Assign the content to the document with its name
+}
+
+corpus <- corpus[-c(1:15)]
+
+# Verify the document names in the corpus
+names(corpus)
+
+#View number of documents
+cat("Number of documents:", length(corpus), "\n")
+```
+
+
+STEP 2
+
+Data Preprocesing
+
+This is a very important phase in any form of analysis as it helps to clean the data and remove any unwanted outliers and inefficiencies. Data preprosessing was done on our documents to ensure that the text formats are in the right format and structure. I began by removing any forms of punctuations in the texts datasets and changing all forms of letters to lower. This was essential as it would simplify analysis. I also removed numbers in the texts since they would not be important in our analysis. 
+
+```{r, warning=FALSE, message=FALSE}
+library(pander)
+library(dplyr)
+
+# Preprocessing the text
+corpus1 <- tm_map(corpus, content_transformer(iconv), from = "UTF-8", to = "ASCII//TRANSLIT")
+corpus1 <- tm_map(corpus1, content_transformer(tolower))
+corpus1 <- tm_map(corpus1, removePunctuation)
+corpus1 <- tm_map(corpus1, removeNumbers)
+corpus1 <- tm_map(corpus1, removeWords, stopwords("english"))
+```
+
+
+STEP 3
+
+Lemmatization
+
+The essence of performing lemmatization in this scenario is to further normalize and reduce the vocabulary size of the text data. Lemmatization reduces words to their base or dictionary form (lemma), which helps to consolidate different inflected forms of a word.
+
+By lemmatizing the text data, we can group together words that have the same root meaning, even if they have different endings or forms. This can improve the quality of the analysis by treating different variations of a word as the same, capturing the overall meaning more accurately. It can also help to reduce noise in the data and make it easier to identify and analyze key topics or patterns.
+
+Additionally, lemmatization can help to improve the efficiency of the analysis by reducing the vocabulary size. This can be particularly useful when working with large text corpora, as it reduces the number of unique terms and improves computational performance.
+
+Statistically, lemmatization helps to normalize the text data, reduce vocabulary size, and improve the accuracy and efficiency of subsequent analysis tasks such as clustering, topic modeling, or sentiment analysis.
+
+
+```{r, message=FALSE, warning=FALSE}
+# Perform lemmatization
+
+library(textstem)
+corpus1 <- tm_map(corpus1, content_transformer(stemDocument))
+```
+
+
+Document-Term Matrix (DTM) creation
+
+DTM creation is essential as it allows us to create a detailed, structured and quantitative form of textual dataset in tabular format to ease any forms of analysis. 
+The overall word count of the whole data set was too large and provided 374 token after creation of the DTM. As a result, i used a subset of my data set so as to attain the specified 20 tokens (words). I used a random selection of the first three documents in each topic/category. These documents provided a 20 word token. . 
+
+```{r}
+# Select specific documents
+selected_docs <- c(3,5,13)
+
+# Create a subset corpus
+subset_corpus <- corpus1[selected_docs]
+
+# Create the Document-Term Matrix (DTM)
+dtm <- DocumentTermMatrix(subset_corpus)
+
+# Remove sparse terms (optional)
+dtm <- removeSparseTerms(dtm, 0.95)
+
+# View the DTM
+inspect(dtm) %>% pander()
+
+# Count the number of tokens
+num_tokens <- sum(dtm2 > 0)
+
+# Print the number of tokens
+print(num_tokens)
+```
+The DTM has 3 documents (Docs) and 20 terms.
+Non-/sparse entries: indicates the number of non-zero (non-sparse) and zero (sparse) entries in the DTM. there are 20 non-zero entries and 40 zero entries.
+Sparsity: represents the proportion of zero entries in the DTM. A sparsity of 67% means that 67% of the entries in the DTM are zeros.
+Maximal term length: This shows the maximum length of the terms (lemmatized words) in the DTM. The maximal term length is 10, indicating that the longest term in the DTM has 10 characters.
+Weighting: The weighting scheme used in the DTM is term frequency (tf), which represents the frequency of each term in each document.
+Sample: This displays a sample of the DTM, showing the frequency of each term in each document. Each row corresponds to a document, and each column represents a term. The numbers in the cells indicate the frequency of the term in the respective document.
+
+
+
+DTM creation of all documents 
+
+```{r}
+# Create the Document-Term Matrix (DTM)
+dtm2 <- DocumentTermMatrix(corpus1)
+
+# Remove sparse terms (optional)
+dtm2 <- removeSparseTerms(dtm2, 0.95)
+
+# View the DTM
+inspect(dtm2)
+
+# Count the number of tokens
+num_tokens <- sum(dtm2 > 0)
+
+# Print the number of tokens
+print(num_tokens)
+
+```
+The total number of tokens in this DTM was 374 which is higher than the specified one. Hence the need to use a sample (subset) of the data set. 
+
+
+
+STEP 5
+
+Cosine Hierarchical clustering
+
+
+```{r, message=FALSE}
+dist_matrix <- proxy::dist(as.matrix(dtm2), method = "cosine")
+
+hc <- hclust(dist_matrix)
+
+plot(hc, main = "Hierarchical Clustering Dendrogram", xlab = "", sub = "")
+
+num_clusters <- 3  # Specify the desired number of clusters
+clusters <- cutree(hc, k = num_clusters)
+print(clusters)
+
+cosine_distance <- 1 - dist_matrix
+cosine_distance
+
+#Load the appropriate library 
+
+library(cluster)
+library(fpc)
+
+#Calculate the appropriate quantitative measure for the measure of clustering
+silhouette_score <- cluster.stats(dist_matrix, clusters)$avg.silwidth
+silhouette_score
+
+#The silhouette_score of 0.6904747 is the measure of quality of the clusters. This is a fair measure of accuracy
+```
+
+Explanation
+The cosine hierachichal clustering shows three clusters which is expected as from our dataset distributions, there are three different topics. The dendogram plot shows several documents that lie outside the expected topics. The clusters are however able to group most of the documents in the correct clusters. the clustering distance are identified. 
+
+Simple Hierarchical clustering
+
+This is a powerful technique used to group documents in the corpus together and determine their relationships. We will perfom a clustering of the subset of corpus DTM perfomed and one for all the documents. 
+
+```{r}
+# Perform hierarchical clustering
+#DTM 1
+hc1 <- hclust(dist(dtm))
+
+#DTM2
+hc2 <- hclust(dist(dtm2))
+```
+
+
+Dendrogram
+
+```{r}
+# Plot dendrogram
+
+#Plot 1
+plot(hc1, main = "Hierarchical Clustering Dendrogram", xlab = "", sub = "")
+
+#Plot 2
+plot(hc2, main = "Hierarchical Clustering Dendrogram", xlab = "", sub = "")
+```
+
+Interpretation
+
+The first dendogram plot of the subset corpus dataset represents two clusters. The distance between the clusters is huge and this signifies disimilarity between the two. The middle subset document which was a review of the siries varies significantly from the rest. the plot also shows some similarity though minor between the first document which was on inflation and climate change. 
+
+
+STEP 5
+
+```{r, message=FALSE}
+library(igraph)
+
+# Calculate the strength of connections based on shared terms
+shared_terms <- crossprod(as.matrix(dtm))
+strength <- as.vector(shared_terms)
+
+# Create an adjacency matrix
+adj_matrix <- shared_terms > 0
+
+# Create an igraph graph object
+graph <- graph.adjacency(adj_matrix, mode = "undirected", weighted = TRUE)
+
+# Plot the network
+plot(graph, edge.width = E(graph)$weight, edge.color = "grey", vertex.size = 10,
+     vertex.label.dist = 1.5, vertex.label.cex = 0.8, main = "Token Network")
+
+#The network potrays unclear groupings and clusters in the data. 
+
+# Calculate the degree centrality
+degree <- degree(graph)
+
+# Identify the central documents (nodes)
+central_docs <- V(graph)$name[degree == max(degree)]
+print(central_docs)
+
+# Identify communities in the network
+communities <- cluster_walktrap(graph)
+membership <- communities$membership
+print(membership)
+```
+
+STEP 6
+
+Let us use the second dtm that comprises of all the documents.
+
+```{r}
+# Calculate the strength of connections based on shared terms
+shared_terms <- crossprod(as.matrix(dtm2))
+strength <- as.vector(shared_terms)
+
+# Create an adjacency matrix
+adj_matrix <- shared_terms > 0
+
+# Create an igraph graph object
+graph <- graph.adjacency(adj_matrix, mode = "undirected", weighted = TRUE)
+
+# Plot the network
+plot(graph, edge.width = E(graph)$weight, edge.color = "grey", vertex.size = 10,
+     vertex.label.dist = 1.5, vertex.label.cex = 0.8, main = "Document Network")
+
+#The network potrays clear groupings and clusters in the data. 
+
+# Calculate the degree centrality
+degree <- degree(graph)
+
+# Identify the central documents (nodes)
+central_docs <- V(graph)$name[degree == max(degree)]
+print(central_docs)
+
+#the central documents in the network, based on their degree centrality, are "first," "season," and "show." These documents have the highest number of connections or shared terms with other documents in the network, indicating their importance or centrality in the overall document network.
+
+# Identify communities in the network
+communities <- cluster_walktrap(graph)
+membership <- communities$membership
+print(membership)
+```
+
+The numbers represent the community membership of each document.
+
+Community 1: Documents with membership 1
+Community 2: Documents with membership 2
+Community 3: Documents with membership 3
+Community 4: Documents with membership 4
+Community 5: Documents with membership 5
+Community 6: Documents with membership 6
+The presence of multiple communities indicates that there are distinct groups or clusters of documents based on the similarity of shared terms. Each community represents a group of documents that are more closely related to each other in terms of shared terms than to documents in other communities.
+
+
+
+STEP 7
+
+```{r}
+# Get the document IDs and tokens from the corpus
+document_ids <- names(corpus)
+tokens <- unlist(corpus)
+
+# Calculate the strength of connections based on shared terms
+shared_terms <- crossprod(as.matrix(dtm2))
+strength <- as.vector(shared_terms)
+
+# Create an adjacency matrix
+adj_matrix <- shared_terms > 0
+
+# Create an igraph bipartite graph object
+graph <- graph_from_adjacency_matrix(adj_matrix, mode = "undirected", weighted = TRUE)
+
+# Identify the document and token nodes
+document_nodes <- 1:length(document_ids)
+token_nodes <- (length(document_ids) + 1):vcount(graph)
+
+# Assign the node types as vertex attributes
+V(graph)$type <- ifelse(V(graph)$name %in% document_nodes, "document", "token")
+
+# Plot the bipartite network using layout_with_kk
+plot(graph, layout = layout_with_kk, main = "Bipartite Network")
+
+# Calculate the degree centrality of document nodes
+degree <- degree(graph, v = document_nodes)
+
+# Identify the central documents (nodes)
+central_docs <- document_nodes[degree == max(degree)]
+print(central_docs)
+
+# Identify communities in the bipartite network
+communities <- cluster_walktrap(graph)
+membership <- membership(communities)
+print(membership)
+
+```
+
+This shows that there are clear clusters among the documents. 

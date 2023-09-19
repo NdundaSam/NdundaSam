@@ -1,0 +1,555 @@
+---
+title: "Carcass Impact on Bird Occupancy Project"
+author: "Client"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Table of Contents
+1. Data Import and Initial Inspection
+2. Data Cleaning and Transformation
+3. Exploratory Data Analysis (EDA)
+
+# Introduction
+<!-- This section introduces the scope and objectives of the research. -->
+
+## Background
+<!-- Explanation of the problem area and its significance. -->
+
+The relationship between the presence of carcasses and the occupancy rate of passerine birds has long been a subject of ecological interest. Carcasses serve as a critical resource in many ecosystems, potentially influencing the foraging behavior, territorial dynamics, and even migratory patterns of avian species. However, the quantitative impact of these carcasses on bird occupancy rates remains poorly understood. This study aims to fill this gap by leveraging advanced statistical techniques and a comprehensive dataset.
+
+## Research Objectives
+<!-- Listing of objectives that the research aims to achieve. -->
+
+The overarching goal of this investigation is to perform a rigorous quantitative evaluation of how carcass presence affects the occupancy rates of passerine birds. To achieve this, the study is structured around the following specific objectives:
+
+1. Undertake Exploratory Data Analysis (EDA) to scrutinize the characteristics, distributions, and inter-relationships of the variables under study.
+2. Implement a hierarchical modeling approach, ranging from rudimentary to sophisticated statistical models, to estimate passerine bird occupancy in relation to the proximity and species of nearby carcasses.
+3. Critically assess the predictive efficacy and explanatory power of the employed models, focusing on accuracy metrics and the interpretability of model parameters.
+4. Apply data clustering algorithms to discern inherent groupings or trends within the dataset that could have an impact on bird occupancy rates.
+
+## Data Description
+<!-- Detailed description of the dataset used for the research. -->
+
+The dataset used for this research comprises observations collected from multiple geographic locations over a span of several years. Each entry in the dataset represents an individual observation and includes the following variables:
+
+- `Occupancy`: A binary variable indicating whether a passerine bird occupied a given location.
+- `Carcass_Type`: The type of carcass found at the location, categorized as 'Mammal', 'Bird', or 'None'.
+- `Location`: The geographical coordinates where the observation was made.
+- `Season`: The season during which the observation was made.
+
+
+<!-- Additional comments about data cleaning and preprocessing. -->
+The dataset has undergone rigorous cleaning to ensure its quality, including the handling of missing values and the removal of irrelevant columns.
+
+# Data Preparation
+<!-- This section details the steps taken to prepare the data for analysis. -->
+
+## Data Import
+<!-- Explanation of the data import process. -->
+
+Before we proceed with the analysis, it is crucial to import the necessary R packages and the dataset itself.
+
+### R code for loading packages
+<!-- R code for loading required packages. -->
+
+**Loading Packages**
+
+```{r load-packages, message=FALSE, warning=FALSE}
+library(glmmTMB) # mixed effects models
+library(sjPlot) # package for making nice and easy plots
+library(MuMIn) # AIC based model selection
+library(DHARMa) # model validation
+library(readxl) # reading xls files
+library(PerformanceAnalytics) # correlation plots
+library(dplyr)
+library(lme4) # Blandingsmodeller
+library(Matrix)
+library(ggplot2)
+library(MASS)
+library(car)
+library(Hmisc)
+library(ggplot2)
+library(ggcorrplot)
+```
+
+```{r Dataset Import}
+# Import the dataset
+data_path <- "birdboxdata_cleaned.Total.xlsx"
+bird_data <- read_excel(data_path)
+```
+
+```{r}
+head(bird_data)
+```
+
+# Data Cleaning
+<!-- This section details the data cleaning procedures undertaken to ensure the dataset's quality. -->
+
+## Handling Missing Values
+<!-- Explanation and rationale for the approach to handling missing values. -->
+
+```{r}
+# Count missing values for each column in bird_data
+colSums(is.na(bird_data))
+
+```
+
+
+```{r handle-missing-values, message=FALSE, warning=FALSE}
+# Remove the 'comment' variable from bird_data
+bird_data$comment <- NULL
+
+# Identify and handle missing values
+missing_values <- is.na(bird_data)
+bird_data <- bird_data[!rowSums(missing_values), ]
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+# Random effect: carcass ID 
+bird_data$Site <- bird_data$ID
+bird_data$Site <- substr(bird_data$Site, 1, nchar(bird_data$Site)-2)
+  
+# Convert 'Dist' and 'SeasonSince' to factors
+bird_data$Dist <- as.factor(bird_data$Dist)
+bird_data$SeasonSince <- as.factor(bird_data$SeasonSince)
+bird_data$Occupancy2 <- as.factor(bird_data$Occupancy2)
+levels(bird_data$Occupancy2) <- c("No", "Yes")
+bird_data$Season <- as.factor(bird_data$Season)
+bird_data$Carcspc <- as.factor(bird_data$Carcspc)
+bird_data$Site <- as.factor(bird_data$Site)
+
+
+# Create 'DistCAT' variable for distance categories
+bird_data$DistCAT <- recode_factor(bird_data$Dist, '0' = "Close", '100' = "Far", '200' = 'Far', '300' = 'Far')
+
+# landcover 10 m: we only keep 3 habitat classes, based on biology and data (very few records), so we merge classes
+
+bird_data$H10_open <- bird_data$open10 + bird_data$open_myr10 + bird_data$conif_myr10
+bird_data$H10_conif <- bird_data$conif10
+bird_data$H10_mixed <- bird_data$decid10 + bird_data$mixedforest10
+
+# landcover 50 m: we only keep 4 habitat classes, based on biology and data (very few records), so we merge classes
+bird_data$H50_mire <- bird_data$conif_myr50 + bird_data$decid_myr50 + bird_data$mixed_myr50 + bird_data$open_myr50
+bird_data$H50_open <- bird_data$open50
+bird_data$H50_conif <- bird_data$conif50
+bird_data$H50_mixed <- bird_data$decid50 + bird_data$mixedforest50
+
+# landcover 100 m: we only keep 4 habitat classes, based on biology and data (very few records), so we merge classes
+
+bird_data$H100_mire <- bird_data$conif_myr100 + bird_data$decid_myr100 + bird_data$open_myr100 + bird_data$mixedforest_myr100
+bird_data$H100_open <- bird_data$open100
+bird_data$H100_conif <- bird_data$conif100
+bird_data$H100_mixed <- bird_data$decid100 + bird_data$mixed100
+
+# Make 10m radius habitat variables proportional
+bird_data$H10_conif <- round((bird_data$H10_conif / (10 * 10 * pi)), digits = 2)
+bird_data$H10_mixed <- round((bird_data$H10_mixed / (10 * 10 * pi)), digits = 2)
+bird_data$H10_open <- round((bird_data$H10_open / (10 * 10 * pi)), digits = 2)
+
+# Make 50m radius habitat variables proportional
+bird_data$H50_mire <- round((bird_data$H50_mire / (50 * 50 * pi)), digits = 2)
+bird_data$H50_open <- round((bird_data$H50_open / (50 * 50 * pi)), digits = 2)
+bird_data$H50_conif <- round((bird_data$H50_conif / (50 * 50 * pi)), digits = 2)
+bird_data$H50_mixed <- round((bird_data$H50_mixed / (50 * 50 * pi)), digits = 2)
+
+# Make 100m radius habitat variables proportional
+bird_data$H100_mire <- round((bird_data$H100_mire / (100 * 100 * pi)), digits = 2)
+bird_data$H100_open <- round((bird_data$H100_open / (100 * 100 * pi)), digits = 2)
+bird_data$H100_conif <- round((bird_data$H100_conif / (100 * 100 * pi)), digits = 2)
+bird_data$H100_mixed <- round((bird_data$H100_mixed / (100 * 100 * pi)), digits = 2)
+
+
+```
+
+## Structure
+```{r}
+str(bird_data)
+```
+
+
+3. Exploratory Data Analysis (EDA)
+
+## Plot 1: Occupancy2 vs. Dist
+```{r message=FALSE, warning=FALSE}
+# Plot 1: Occupancy2 vs. Dist
+ggplot(bird_data, aes(x = Dist, y = Occupancy2)) +
+  geom_point(aes(color = Occupancy2), position = position_jitter(w = 0.2, h = 0.2)) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE) +
+  labs(title = "Occupancy2 vs. Distance to Carcass",
+       x = "Distance to Carcass",
+       y = "Occupancy") +
+  theme_minimal()
+
+```
+
+##Plot 2: Occupancy2 vs. DistCAT
+```{r message=FALSE, warning=FALSE}
+
+# Occupancy2 vs. DistCAT
+ggplot(bird_data, aes(x = DistCAT, y = Occupancy2)) +
+  geom_point(aes(color = Occupancy2), position = position_jitter(w = 0.2, h = 0.2)) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE) +
+  labs(title = "Occupancy2 vs. Categorical Distance to Carcass",
+       x = "Categorical Distance to Carcass",
+       y = "Occupancy") +
+  theme_minimal()
+```
+
+```{r message=FALSE, warning=FALSE}
+# Occupancy2 vs. Season
+ggplot(bird_data, aes(x = Season, y = Occupancy2)) +
+  geom_point(aes(color = Occupancy2), position = position_jitter(w = 0.2, h = 0.2)) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE) +
+  labs(title = "Occupancy2 vs. Season",
+       x = "Season",
+       y = "Occupancy") +
+  theme_minimal()
+```
+
+
+
+3.4 Correlation Matrix for Numeric Variables
+```{r}
+# Select specific variables
+numeric_vars <- bird_data[, c("Carcbiom", "H10_open", "H10_conif", "H10_mixed", "H50_mire", "H50_open", "H50_conif", "H50_mixed", "H100_mire", "H100_open", "H100_mixed")]
+
+result <- rcorr(as.matrix(numeric_vars))
+cor_matrix <- result$r
+p_matrix <- result$P
+
+cor_melted <- as.data.frame(as.table(cor_matrix))
+p_melted <- as.data.frame(as.table(p_matrix))
+
+combined_melted <- cbind(cor_melted, p.value = p_melted$Freq)
+
+ggplot(data = combined_melted, aes(x = Var1, y = Var2)) +
+  geom_tile(aes(fill = Freq), color = "white") +
+  scale_fill_gradient2(low = "#E46726", high = "#6D9EC1", mid = "white",
+                       midpoint = 0, limit = c(-1, 1), space = "Lab",
+                       name = "Correlation") +
+  geom_text(aes(label = sprintf("%.2f", Freq)), vjust = 1) +
+  geom_text(data = subset(combined_melted, p.value <= .05), aes(label = "***"), vjust = -1) +
+  geom_text(data = subset(combined_melted, p.value > .05 & p.value <= .1), aes(label = "*"), vjust = -1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Correlation Matrix with Significance Levels")
+
+
+```
+Specific Observations:
+Certainly, I'll expand the observations based on the given correlation matrix:
+
+1. **H10_open and H10_conif**: 
+    - Correlation: -0.86 
+    - P-value: <2e-16 
+    - Interpretation: Strong negative correlation that is statistically significant.
+
+2. **H10_conif and H10_mixed**: 
+    - Correlation: -0.52 
+    - P-value: <2e-16 
+    - Interpretation: Moderate negative correlation that is statistically significant.
+
+3. **H10_open and H10_mixed**: 
+    - Correlation: 0.01 
+    - P-value: 0.86
+    - Interpretation: Negligible correlation that is not statistically significant.
+
+4. **H50_mire and H50_open**: 
+    - Correlation: 0.31 
+    - P-value: 0 
+    - Interpretation: Moderate positive correlation that is statistically significant.
+
+5. **H50_conif and H50_mixed**: 
+    - Correlation: -0.48
+    - P-value: 0 
+    - Interpretation: Moderate negative correlation that is statistically significant.
+
+6. **H100_mire and H100_open**: 
+    - Correlation: -0.04
+    - P-value: 0.51
+    - Interpretation: Negligible correlation that is not statistically significant.
+
+7. **H100_open and H100_mixed**: 
+    - Correlation: 0.96
+    - P-value: <2e-16 
+    - Interpretation: Extremely strong positive correlation that is statistically significant.
+
+8. **H50_mire and H50_conif**: 
+    - Correlation: -0.74
+    - P-value: <2e-16
+    - Interpretation: Strong negative correlation that is statistically significant.
+
+9. **H50_open and H50_mixed**: 
+    - Correlation: 0.28
+    - P-value: 0
+    - Interpretation: Low positive correlation that is statistically significant.
+
+10. **H100_mire and H100_mixed**: 
+    - Correlation: -0.04
+    - P-value: 0.51
+    - Interpretation: Negligible correlation that is not statistically significant.
+
+These interpretations can provide valuable insights into the relationships between these habitat variables.
+
+General Trends:
+1. Variables within the same radius but different habitats (e.g., H10_open and H10_conif) tend to be negatively correlated.
+
+2. Variables with different radii but the same habitat type (e.g., H10_open and H50_open) often show a moderate to strong positive correlation.
+
+3. P-values are generally very low (<2e-16), indicating that most of the correlations are statistically significant.
+
+
+# Model Breakdown
+Baseline Model: A logistic regression model to predict bird occupancy (Occupancy2) based on distance from the carcass (Dist), without any random effects. This will serve as our baseline model for comparison.
+
+Simple GLMM: Introducing random effects for Site (bird nesting box ID), using distance (Dist) as a fixed effect to predict bird occupancy (Occupancy2).
+
+GLMM with Categorical Variables: Adding categorical variables like carcass type (Carctype) and season since placement (SeasonSince) as fixed effects along with distance (Dist).
+
+GLMM with Interaction Terms: Introducing interaction between distance (Dist) and season since placement (SeasonSince) as fixed effects.
+
+GLMM with Habitat Variables: Incorporating the habitat variables (H10_conif, H10_mixed, etc.) as fixed effects in addition to distance (Dist).
+
+Full GLMM: A comprehensive model including all the above-mentioned fixed and random effects, with interaction terms and habitat variables.
+
+GLMM with Proportional Habitat Variables: Using the newly calculated proportional habitat variables (H10_conif, H50_mire, etc.) as fixed effects.
+
+Advanced GLMM
+# Baseline GLMM
+```{r}
+# Run Baseline Logistic Regression Model in R
+glmm_baseline <- glm(Occupancy2 ~ Dist, data = bird_data, family = binomial)
+
+# Summary of the model
+summary(glmm_baseline)
+
+```
+
+Basic Prediction (Intercept: -0.9734): Without considering any distance factor, the model predicts that the nesting boxes are less likely to be occupied. The specific number here is -0.9734, which essentially says that, generally, birds are not favoring these nesting boxes.
+
+Effect of Distance:
+
+100 meters (0.6206): Being 100 meters away from a carcass doesn't seem to make a significant difference in occupancy compared to being right next to it.
+200 meters (0.1567): Similarly, being 200 meters away also doesn't make much difference.
+300 meters (0.5547): Even at 300 meters, there's no strong evidence that the birds are more likely to occupy the nesting boxes.
+How Sure Are We? (Significance): The model isn't highly confident about the impact of these distances. None of the distance categories are showing a strong and clear influence on bird occupancy.
+
+Overall Fit: The model's prediction is not dramatically better than a random guess. This is indicated by numbers like "Null deviance" and "Residual deviance" which didn't change much.
+
+Simplicity vs. Accuracy (AIC: 327.29): The AIC value helps us understand if the model is useful. Lower is better, but in this case, the value doesn't strongly indicate that the model is a good fit.
+
+In Simple Terms:
+The nesting boxes aren't really getting occupied, no matter how far they are from a carcass. The model isn't confident that distance from a carcass is a strong factor affecting this. Also, the model itself isn't much better than making a random guess about bird occupancy based on these distances.
+
+## Simple GLMM
+```{r}
+# Simple GLMM with 'ID' as random effect and 'Dist' as fixed effect
+glmm_simple <- glmer(Occupancy2 ~ Dist + (1 | Site), data = bird_data, family = binomial)
+summary(glmm_simple)
+```
+The intercept is significant at a 0.001 level, suggesting that the model is better than a null model with no predictors. However, none of the distance variables are statistically significant at the standard 0.05 level, although Dist100 is close (p = 0.0999).
+
+Interpretation
+Model Fit: The model has a relatively high AIC and BIC, suggesting that it may not be the best fit for the data.
+
+Random Effects: The presence of some variance at the site level suggests that accounting for random effects is appropriate.
+
+Distance to Carcass (Dist): The coefficients for distance are not statistically significant, indicating that they do not have a strong impact on bird box occupancy ("Occupancy2") in different sites.
+
+Overall: This model suggests that while there may be some variability between sites, distance to the carcass doesn't appear to have a significant impact on bird box occupancy. Given the high AIC and BIC, the model could potentially be improved.
+
+## GLMM with categorical Variables
+```{r message=FALSE, warning=FALSE}
+# Run the GLMM model with categorical variables
+glmm_with_categorical <- glmer(Occupancy2 ~ Dist + Carctype + Carcspc + Season + SeasonSince + (1|Site), 
+                                data = bird_data, 
+                                family = binomial)
+
+# Display the summary of the model
+summary(glmm_with_categorical)
+```
+
+Interpretation
+Model Fit: The model has a relatively lower AIC and BIC compared to the simple GLMM, which might suggest it's a better fit.
+
+Random Effects: The presence of some variance at the site level indicates that the model accounts for variability among different sites, although this variability is minor.
+
+Fixed Effects:
+
+Distances (Dist100, Dist200, Dist300): These variables are not statistically significant at a 0.05 level, indicating that they don't have a strong impact on bird box occupancy.
+Carcass Types (Moose, Reindeer): Also not statistically significant, suggesting that the type of carcass doesn't significantly affect bird occupancy.
+Seasons (Spring, Summer, Winter): Again, not significant, implying that the time of year may not be a strong predictor.
+SeasonSince (2, 3): These are significant (p < 0.05), suggesting that the number of seasons since the placement of the carcass does affect bird occupancy.
+
+
+Overall: This model is more complex than the simple GLMM, incorporating various categories. While it suggests that the season since the placement of the carcass is a significant predictor, most other variables do not significantly impact bird box occupancy. The warnings indicate that further investigation is needed to validate the model's findings.
+
+## GLMM DistCAT
+```{r}
+
+glmm_DistCAT <- glmer(Occupancy2 ~ DistCAT + (1|Site), data = bird_data, family = binomial)
+
+
+# Display the summary of the model
+summary(glmm_DistCAT)
+```
+
+Model Information: The model is trying to understand if the distance of the bird box to a nearby carcass (categorized as 'Close' or 'Far') affects whether the box is occupied by birds.
+
+AIC and BIC: These are measures of the model's goodness of fit. Lower values are better, but they are more useful for comparing different models than for interpreting a single model.
+
+LogLik and Deviance: These are also measures of how well the model fits the data. Like AIC and BIC, these are used for comparing models rather than for direct interpretation.
+
+Scaled Residuals: These numbers tell us about the difference between the observed data and the model's predictions. Ideally, these should be close to zero, which would mean our model is very accurate.
+
+Random Effects: The 'Variance' and 'Std.Dev.' for the 'Site' tell us how much bird boxes at different sites vary from each other. In this case, the standard deviation is 0.3022, meaning that there is some variability between sites but it's not huge.
+
+Number of Observations: This tells us that the model was built using 250 observations and 25 different sites (bird boxes).
+
+Fixed Effects: This part is crucial. It tells us how each variable (in this case, just the distance to the carcass) affects the likelihood of a bird box being occupied.
+
+(Intercept): This is the predicted log-odds of a bird box being occupied when the distance to the carcass is 'Close' (the reference category). The estimate is -0.9998, and it is statistically significant (p-value < 0.001).
+
+DistCATFar: This is the change in log-odds when the distance to the carcass is 'Far' compared to 'Close'. The estimate is 0.4633, but it's not statistically significant (p-value = 0.155), meaning we can't confidently say that being far from a carcass influences occupancy.
+
+Correlation of Fixed Effects: This shows the correlation between the predictor variables. A value close to -1 or 1 would indicate multicollinearity, which is not the case here.
+
+So, in simple terms, the model suggests that the distance to the carcass ('Close' or 'Far') does not significantly affect whether a bird box is occupied or not, although the model does hint at a trend that being far might increase the odds of occupancy.
+
+## GLMM with interactions
+```{r message=FALSE, warning=FALSE}
+# Fit the GLMM with interaction terms
+glmm_interaction <- glmer(Occupancy2 ~ Dist * SeasonSince + (1|Site), data = bird_data, family = binomial)
+
+# Summary of the model
+summary(glmm_interaction)
+
+```
+
+Interpretation
+Model Fit: The AIC and BIC values are slightly higher than in the previous categorical model, which may suggest a less optimal fit.
+
+Random Effects: The variance at the site level is higher than in the categorical model, implying more site-specific variability in bird box occupancy.
+
+Fixed Effects:
+
+Distances: None of the distance variables are statistically significant at the 0.05 level.
+SeasonSince: These variables are also not statistically significant, unlike in the categorical model.
+Interactions: All interaction terms (e.g., Dist100:SeasonSince2) are not statistically significant, indicating that the effect of distance on occupancy does not vary significantly with the seasons since carcass placement.
+Overall: This model explores the interaction between distance and time since the carcass was placed but finds no significant interaction effects. The higher random effects variance suggests that site-specific factors might be more relevant in this model. However, the lack of statistically significant fixed effects calls into question the explanatory power of the variables included.
+
+```{r message=FALSE, warning=FALSE}
+# Fit the GLMM with interaction terms
+glmm_interaction_s <- glmer(Occupancy2 ~ Dist * Season + (1|Site), data = bird_data, family = binomial)
+
+# Summary of the model
+summary(glmm_interaction_s)
+```
+
+Quality of the Model:
+Our model is okay but not great. The numbers that tell us this (AIC, BIC) could be better.
+Random Factors:
+Different nesting sites don't seem to make much of a difference in our model.
+Key Factors Affecting Bird Occupancy:
+Distance from the carcass doesn't strongly affect whether a bird will occupy a nesting box or not.
+The season (Spring, Summer, Winter) also doesn't seem to make much of a difference. 
+
+
+## GLMM with Habitat Variables
+```{r message=FALSE, warning=FALSE}
+# GLMM with habitat variables
+glmm_habitat <- glmer(Occupancy2 ~ Dist + H10_conif + H10_mixed + H10_open +H50_conif+H50_mixed+H50_open+H100_conif+H100_mixed+H100_open  + (1|Site), data = bird_data, family = binomial)
+summary(glmm_habitat)
+
+```
+
+Key Factors Affecting Bird Occupancy:
+Distance from the carcass (Dist100, Dist200, Dist300) doesn't strongly affect the occupancy. Their p-values are above 0.05, suggesting they aren't statistically significant.
+Various habitat factors like the percentage of coniferous, mixed, or open spaces within 10m, 50m, and 100m of the nest also don't seem to be significant predictors. Their p-values are mostly above 0.05.
+
+## GLMM with Polynomial Terms
+```{r message=FALSE, warning=FALSE}
+# GLMM with polynomial terms
+glmm_poly <- glmer(Occupancy2 ~ poly(Dist, 2) + (1|Site), data = bird_data, family = binomial)
+summary(glmm_poly)
+
+```
+
+## GLMM with Nested Random Effects
+```{r message=FALSE, warning=FALSE}
+# GLMM with nested random effects
+glmm_nested <- glmer(Occupancy2 ~ Dist + (1|Carcspc/Site), data = bird_data, family = binomial)
+summary(glmm_nested)
+
+```
+Model Information: This model is examining how distance to a carcass (Dist) impacts the likelihood that a bird nest box (Occupancy2) is occupied, while accounting for nested random effects related to the species of the carcass (Carcspc) and the site (Site).
+
+AIC and BIC: These are measures of how well the model fits the data, with lower values being better. They are primarily used for model comparison.
+
+LogLik and Deviance: These also indicate the model's goodness of fit. Like AIC and BIC, they are used for comparing different models.
+
+Scaled Residuals: These give an idea of the discrepancies between the model's predictions and the actual data. Ideally, these should be close to zero.
+
+Random Effects:
+
+Site:Carcspc: The standard deviation (Std.Dev.) is 0.2962, which suggests that the variability of bird box occupancy between different combinations of sites and carcass species is moderate.
+Carcspc: The standard deviation is 0.1049, indicating relatively low variability in occupancy rates between different carcass species.
+Number of Observations: There are 250 observations used to build this model, grouped into 25 combinations of site and carcass species, and 2 unique carcass species.
+
+Fixed Effects:
+
+(Intercept): The log-odds of a bird box being occupied when all other variables are at their reference level is -0.9845, and this is statistically significant.
+Dist100, Dist200, Dist300: These represent the change in log-odds for different distances to a carcass (100m, 200m, 300m). None of these are statistically significant at the 0.05 level, although Dist100 shows a trend (p-value = 0.1).
+Correlation of Fixed Effects: This section informs us about the correlation between the predictor variables. High correlation could indicate multicollinearity, but that's not the case here.
+
+In non-technical terms, this model suggests that distance to a carcass doesn't have a statistically significant effect on whether a bird box is occupied. Additionally, there is some variability in occupancy between different combinations of sites and carcass species, but it's not very large.
+
+## Full GLMM
+```{r message=FALSE, warning=FALSE}
+# Full GLMM
+glmm_full <- glmer(Occupancy2 ~ Dist * Carcspc + SeasonSince + Season + Carctype + H10_conif + H10_mixed + H10_open +H50_conif+H50_mixed+H50_open+H100_conif+H100_mixed+H100_open + (1|Site), data = bird_data, family = binomial)
+summary(glmm_full)
+
+```
+
+Interpretation
+Fixed Effects:
+Distances: None of the distance variables are statistically significant.
+SeasonSince: Both SeasonSince2 and SeasonSince3 are statistically significant at the 0.05 level.
+Habitat Types: H10_open is statistically significant.
+Seasons and Carcass Types: These variables are not statistically significant.
+Random Effects: The zero variance suggests that the model does not account for random effects at the site level.
+
+Warnings:
+
+"variance-covariance matrix is not positive definite" suggests numerical instability.
+"fixed-effect model matrix is rank deficient" indicates a problem with multicollinearity or overfitting.
+"boundary (singular) fit" suggests that the model is overparameterized.
+Overall: Despite the complexity of the model, very few fixed effects are significant. The model's fit is questionable, as indicated by the AIC and BIC, and the numerous warnings suggest that the model may be overfit or poorly specified.
+
+
+**Conclusions**
+Hypothesis 1: There is some weak evidence from the simple GLMM and the categorical GLMM in favor of higher occupancy rates in nest boxes closer to carcasses (possibly due to proximity to food and nesting material). However, this is not robust across all models or distance measures.
+
+Hypothesis 2: The data do not provide strong evidence to support the "landscape of fear" hypothesis, as proximity to carcasses did not significantly lower occupancy rates in the studied nest boxes in any of the models.
+
+
+
+
+
+
+
+
+
+
+

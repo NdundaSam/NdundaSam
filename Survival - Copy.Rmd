@@ -1,0 +1,795 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r, message=FALSE, warning=FALSE}
+require(readxl)
+require(dplyr)
+require(GGally)
+require(visdat)
+require(naniar)
+require(broom)
+require(mice)
+require(randomForestSRC)
+require(ggRandomForests)
+require(survival)
+require(survminer)
+require(SurvRegCensCov)
+require(caret)
+require(StepReg)
+require(boot)
+library(survivalROC)
+require(glmnet)
+require(mboost)
+
+require(neuralnet)
+```
+
+```{r, include = FALSE}
+# Load in the dataset 
+#clinicalData <- read_excel("MSKCC_PCa_Clinical_Annotation.xls")
+#geneData <- read.delim("~/R Documents/Projects/Survival analysis/MSKCC_PCa_mRNA_data.txt")
+
+clinicalData <- read_excel("MSKCC_PCa_Clinical_Annotation.xls", sheet = "Clinical data")
+#View(clinicalData)
+geneData <- read.delim("C:/Users/Administrator/Documents/R WORK/Survival Analysis/MSKCC_PCa_mRNA_data.txt")
+```
+
+```{r}
+# Rename specific columns
+names(clinicalData)[names(clinicalData) %in% c("Sample ID", "Nomogram PFP_PostRP", "Nomogram NomoPred_ECE", "Nomogram NomoPred_LNI", "Nomogram NomoPred_OCD", "Nomogram NomoPred_SVI", "Copy-number Cluster", "ERG-fusion aCGH", "ERG-fusion gex")] <- c("Sample_ID", "Nomogram_PFP_PostRP", "Nomogram_NomoPred_ECE", "Nomogram_NomoPred_LNI", "Nomogram_NomoPred_OCD", "Nomogram_NomoPred_SVI", "Copy_number_Cluster", "ERG_fusion_aCGH", "ERG_fusion_gex")
+```
+
+```{r}
+# Deleting rows with all NAs (First few rows and last row)
+clinicalData1 <- clinicalData[-c(1:13, 232), ] 
+```
+
+```{r}
+# Delete row with "Tx_Effects" from dataset
+clinicalData1 <- clinicalData1[clinicalData1$PathGGS != "Tx_Effects", ]
+```
+
+```{r}
+# Replace "NA" in the variables with NA
+clinicalData1[clinicalData1 == "NA"] <- NA 
+```
+
+```{r}
+clinicalData1$BCR_Event <- ifelse(clinicalData1$BCR_Event == "NO", 0,
+                                    ifelse(clinicalData1$BCR_Event == "BCR_Algorithm", 1, clinicalData1$BCR_Event))
+```
+
+```{r, include = FALSE}
+# Convert numeric variables
+clinicalData1$PreDxBxPSA <- as.numeric(clinicalData1$PreDxBxPSA)
+clinicalData1$DxAge <- as.numeric(clinicalData1$DxAge)
+clinicalData1$PreTxPSA <- as.numeric(clinicalData1$PreTxPSA)
+clinicalData1$Num_Nodes_Removed <- as.numeric(clinicalData1$Num_Nodes_Removed)
+clinicalData1$Num_Nodes_Positive <- as.numeric(clinicalData1$Num_Nodes_Positive)
+clinicalData1$BCR_FreeTime <- as.numeric(clinicalData1$BCR_FreeTime)
+clinicalData1$BCR_Event <- as.numeric(clinicalData1$BCR_Event)
+clinicalData1$SurvTime <- as.numeric(clinicalData1$SurvTime)
+clinicalData1$Nomogram_PFP_PostRP <- as.numeric(clinicalData1$Nomogram_PFP_PostRP)
+clinicalData1$Nomogram_NomoPred_ECE <- as.numeric(clinicalData1$Nomogram_NomoPred_ECE)
+clinicalData1$Nomogram_NomoPred_LNI <- as.numeric(clinicalData1$Nomogram_NomoPred_LNI)
+clinicalData1$Nomogram_NomoPred_OCD <- as.numeric(clinicalData1$Nomogram_NomoPred_OCD)
+clinicalData1$Nomogram_NomoPred_SVI <- as.numeric(clinicalData1$Nomogram_NomoPred_SVI)
+
+# Convert categorical variables
+clinicalData1$Sample_ID <- as.factor(clinicalData1$Sample_ID)
+clinicalData1$Type <- as.factor(clinicalData1$Type)
+clinicalData1$MetSite <- as.factor(clinicalData1$MetSite)
+clinicalData1$Race <- as.factor(clinicalData1$Race)
+clinicalData1$BxGG1 <- as.factor(clinicalData1$BxGG1)
+clinicalData1$BxGG2 <- as.factor(clinicalData1$BxGG2)
+clinicalData1$BxGGS <- as.factor(clinicalData1$BxGGS)
+clinicalData1$ClinT_Stage <- as.factor(clinicalData1$ClinT_Stage)
+clinicalData1$NeoAdjRadTx <- as.factor(clinicalData1$NeoAdjRadTx)
+clinicalData1$ChemoTx <- as.factor(clinicalData1$ChemoTx)
+clinicalData1$HormTx <- as.factor(clinicalData1$HormTx)
+clinicalData1$RadTxType <- as.factor(clinicalData1$RadTxType)
+clinicalData1$RP_Type <- as.factor(clinicalData1$RP_Type)
+clinicalData1$SMS <- as.factor(clinicalData1$SMS)
+clinicalData1$ECE <- as.factor(clinicalData1$ECE)
+clinicalData1$SVI <- as.factor(clinicalData1$SVI)
+clinicalData1$LNI <- as.factor(clinicalData1$LNI)
+clinicalData1$PathStage <- as.factor(clinicalData1$PathStage)
+clinicalData1$PathGG1 <- as.factor(clinicalData1$PathGG1)
+clinicalData1$PathGG2 <- as.factor(clinicalData1$PathGG2)
+clinicalData1$PathGGS <- as.factor(clinicalData1$PathGGS)
+# clinicalData1$BCR_Event <- factor(clinicalData1$BCR_Event, levels = c(0, 1), labels = c("NO", "BCR_Algorithm"))
+clinicalData1$MetsEvent <- as.factor(clinicalData1$MetsEvent)
+clinicalData1$Event <- as.factor(clinicalData1$Event)
+clinicalData1$Copy_number_Cluster <- as.factor(clinicalData1$Copy_number_Cluster)
+clinicalData1$ERG_fusion_aCGH <- as.factor(clinicalData1$ERG_fusion_aCGH)
+clinicalData1$ERG_fusion_gex <- as.factor(clinicalData1$ERG_fusion_gex)
+```
+
+```{r}
+#summary(clinicalData1)
+```
+
+```{r}
+# Deleting columns with all NAs
+clinicalData1 <- clinicalData1[, !(names(clinicalData1) %in% c("MetSite", "NeoAdjRadTx", "ChemoTx", "HormTx", "RadTxType", "Num_Nodes_Removed",
+                                                               "Num_Nodes_Positive", "Nomogram_PFP_PostRP", "Nomogram_NomoPred_ECE", 
+                                                               "Nomogram_NomoPred_LNI", "Nomogram_NomoPred_OCD", "Nomogram_NomoPred_SVI", 
+                                                               "Copy_number_Cluster", "ERG_fusion_aCGH", "ERG_fusion_gex"))] 
+
+```
+
+```{r}
+# Check for and print the column names with missing values
+missing_cols <- colSums(is.na(clinicalData1)) > 0
+print(names(clinicalData1)[missing_cols]) 
+```
+
+```{r}
+# VISUALIZE MISSING DATA
+# md.pattern(clinicalData1)
+clinicalData1 %>% vis_dat()
+clinicalData1 %>% vis_miss()
+clinicalData1 %>% gg_miss_upset()
+```
+
+```{r}
+completeCases <- complete.cases(clinicalData1$PreDxBxPSA, clinicalData1$BxGGS, clinicalData1$ClinT_Stage, clinicalData1$RP_Type,
+                                clinicalData1$SMS, clinicalData1$ECE, clinicalData1$SVI, clinicalData1$LNI, clinicalData1$PathStage, 
+                                clinicalData1$PathGGS, clinicalData1$BCR_FreeTime)
+clinicalData1 <- clinicalData1[completeCases, ]
+
+
+completeCases <- complete.cases(clinicalData1[, c("PreTxPSA", "BxGGS", "ClinT_Stage", "RP_Type", "SMS", "ECE", "SVI", "LNI", "PathStage", "PathGGS", "BCR_FreeTime")])
+clinicalData1 <- clinicalData1[completeCases, ]
+clinicalData1 <- as.data.frame(clinicalData1)
+```
+
+
+## ANALYSIS ##
+#### CLINICAL VARIABLES ONLY ####
+
+##### COX MODEL #####
+```{r, warning=FALSE}
+cox.Model1 <- coxph(Surv(BCR_FreeTime, BCR_Event) ~ Race + DxAge + PreTxPSA + RP_Type + SMS + ECE + SVI + LNI + PathGGS, 
+                    data = clinicalData1, id = Sample_ID)
+
+# Perform stepwise backwards selection
+cox.Model2 <- step(cox.Model1, direction = "backward", maxit = 100,trace = 0)
+
+# Print the final model summary
+summary(cox.Model2)
+#tbl_regression(cox.Model2, exponentiate = TRUE)
+# Print the final model summary using tidy() from broom
+tidy(cox.Model2, exponentiate = TRUE)
+```
+
+Interpretation:
+
+The results suggest that PreTxPSA, SVI, LNI, and PathGGS are important predictors of time-to-BCR in prostate cancer patients. Patients with higher PreTxPSA levels, SVI, abnormal lymph nodes (N0), and higher Gleason scores (8 and 9) are at increased risk of experiencing BCR.
+
+
+```{r}
+# Examine proportional hazards assumption: assumes that the hazard ratio between two groups remains constant over time
+print(cox.zph(cox.Model2)) # Schoenfeld Residuals Test(p-value below 5% suggests evidence of violation)
+plot(cox.zph(cox.Model2)) # Schoenfeld Residuals Plot
+plot(survfit(cox.Model2), fun = "cloglog") # Log-minus-log Plot
+```
+Model Performance
+
+```{r}
+# Plot the Kaplan-Meier curves
+survfit(cox.Model2, data = clinicalData1)
+```
+The Kaplan-Meier curve shows that the survival probabilities for patients with different values of the covariates are not significantly different. This suggests that the Cox model may not provide a good fit to the data.
+
+The survfit() function also provides the median survival time, which is the time at which 50% of the patients in the study have died. The median survival time for the patients in your study is 110 months, which is a relatively long time.
+
+
+##### WEIBULL MODEL #####
+```{r, warning=FALSE}
+weibull.Model1 <- survreg(Surv(BCR_FreeTime, BCR_Event) ~ Race + DxAge + PreTxPSA + RP_Type + SMS + ECE + SVI + LNI + PathGGS, 
+                          data = clinicalData1, dist = "weibull")
+
+# Perform stepwise backwards selection
+weibull.Model2 <- step(weibull.Model1, direction = "backward", maxit = 100, trace = 0)
+
+# Print the final model summary
+summary(weibull.Model2)
+```
+The model summary indicates that the Weibull survival model has significant predictors (e.g., PreTxPSA, SVI, LNI, PathGGS) that are associated with the time-to-event outcome (BCR_FreeTime). The Time-Dependent AUC at 60 months provides an assessment of how well the Weibull model predicts individual survival probabilities at that specific time point. A higher Time-Dependent AUC indicates that the Weibull model is better at discriminating between individuals who experience an event and those who do not at 60 months.
+
+```{r}
+# WeibullDiag(Surv(BCR_FreeTime, BCR_Event) ~ Race, data = clinicalData1)
+# WeibullDiag(Surv(BCR_FreeTime, BCR_Event) ~ RP_Type, data = clinicalData1)
+WeibullDiag(Surv(BCR_FreeTime, BCR_Event) ~ PathGGS, data = clinicalData1)
+WeibullDiag(Surv(BCR_FreeTime, BCR_Event) ~ SVI, data = clinicalData1)
+WeibullDiag(Surv(BCR_FreeTime, BCR_Event) ~ LNI, data = clinicalData1)
+```
+
+Model Performance
+
+```{r}
+# Calculate the Kolmogorov-Smirnov test
+ks.test(weibull.Model2$df.residual, "pnorm")
+```
+This means that the Kolmogorov-Smirnov test rejects the null hypothesis that the residuals are normally distributed. The p-value is less than 2.2e-16, which is very small. This suggests that the residuals are not normally distributed.
+
+The fact that the residuals are not normally distributed suggests that the Weibull model is not a good fit to the data. 
+
+Let us confirm the models perfomance using another simple criteria
+
+Look at the log-likelihood ratio test. The log-likelihood ratio test compares the fit of the Weibull model to the fit of a model with no covariates. The p-value for the log-likelihood ratio test will be small if the Weibull model provides a significantly better fit to the data than the model with no covariates.
+
+```{r}
+# Perform the log-likelihood ratio test
+logLik0 <- logLik(weibull.Model1)
+logLik2 <- logLik(weibull.Model2)
+
+# Calculate the log-likelihood ratio
+lrt <- 2 * (logLik2 - logLik0)
+
+# Get the p-value for the log-likelihood ratio test
+pval <- pchisq(lrt, df = 4, lower.tail = FALSE)
+pval
+```
+The log-likelihood of the model is 1, which is not very high. This suggests that the model is not a good fit to the data. The fact that the model has 9 degrees of freedom also suggests that the model is too complex.
+
+
+##### RANDOM SURVIVAL FOREST #####
+```{r, warning=FALSE}
+rsf.Model1 <- rfsrc(Surv(BCR_FreeTime, BCR_Event) ~ Race + DxAge + PreTxPSA + RP_Type + SMS + ECE + SVI + LNI + PathGGS,
+                   data = clinicalData1, importance = TRUE)
+print(rsf.Model1)
+# summary(rsf.Model1)
+```
+
+```{r}
+plot(gg_vimp(rsf.Model1)) + 
+  theme(legend.position = c(0.8, 0.2)) + 
+  labs(fill = "VIMP > 0")
+
+var.select(rsf.Model1)
+```
+
+```{r}
+rsf.Model2 <- rfsrc(Surv(BCR_FreeTime, BCR_Event) ~ Race + PreTxPSA + SMS + ECE + SVI + LNI + PathGGS, 
+                    data = clinicalData1, importance = TRUE)
+                   
+print(rsf.Model2)
+```
+
+```{r}
+plot(gg_vimp(rsf.Model2)) + 
+  theme(legend.position = c(0.8, 0.2)) + 
+  labs(fill = "VIMP > 0")
+
+var.select(rsf.Model2)
+```
+
+
+
+##### BOOSTED COX #####
+```{r, warning=FALSE}
+# fm <- Surv(BCR_FreeTime, BCR_Event) ~ Race + DxAge + PreTxPSA + RP_Type + SMS + ECE + SVI + LNI + PathGGS
+# boosted.Model1 <- glmboost(fm, data = clinicalData1, family = CoxPH(), control=boost_control(mstop = 500, nu = 0.1))
+boosted.Model1 <- mboost(Surv(BCR_FreeTime, BCR_Event) ~ Race + DxAge + PreTxPSA + RP_Type + SMS + ECE + SVI + LNI + PathGGS, 
+                         data = clinicalData1, family = CoxPH(), control=boost_control(mstop = 100, nu = 0.1))
+summary(boosted.Model1)
+plot(varimp(boosted.Model1))
+```
+
+```{r}
+# fm <- Surv(BCR_FreeTime, BCR_Event) ~ Race + PreTxPSA + ECE + SVI + LNI + PathGGS
+# boosted.Model2 <- glmboost(fm, data = clinicalData1, family = CoxPH(), control=boost_control(mstop = 500, nu = 0.1))
+boosted.Model2 <- mboost(Surv(BCR_FreeTime, BCR_Event) ~ Race + PreTxPSA + ECE + SVI + LNI + PathGGS, 
+                         data = clinicalData1, family = CoxPH(), control=boost_control(mstop = 100, nu = 0.1))
+summary(boosted.Model2)
+plot(varimp(boosted.Model2))
+```
+CR0SS-VALIDATION
+
+```{r}
+# Split the data into training and testing sets (e.g., 80% training, 20% testing)
+set.seed(123)  # For reproducibility
+train_indices <- sample(1:nrow(clinicalData1), 0.67 * nrow(clinicalData1))
+train_data <- clinicalData1[train_indices, ]
+test_data <- clinicalData1[-train_indices, ]
+
+# Predict survival on the testing data using the model
+predicted_survival <- predict(rsf.Model2, test_data, individual = TRUE)
+predicted_survival
+```
+
+The C-index for the testing data is 0.4333638. A C-index of 0.5 indicates that the model is no better than random guessing, while a C-index of 1 indicates that the model is perfect. A C-index of 0.43 indicates that the model is not a very good predictor of survival times.
+
+```{r}
+## Set seed for reproducibility
+set.seed(123)
+
+## Define repeated cross validation with 5 folds and three repeats
+repeat_cv <- trainControl(method='repeatedcv', number=5, repeats=5)
+
+modeeep <- rfsrc(Surv(BCR_FreeTime, BCR_Event) ~ Race + PreTxPSA + SMS + ECE + SVI + LNI + PathGGS, 
+                    data = train_data, importance = TRUE)
+
+
+## Generate predictions
+y_hats <- predict(
+        
+        ## Random forest object
+        object=modeeep, 
+        
+        ## Data to use for predictions; remove the Species
+        newdata=test_data, 
+        individual = TRUE)
+
+## Convert predicted survival to predicted events (BCR_Event)
+predicted_events <- predicted_survival$time <= test_data$BCR_FreeTime
+
+## Convert predicted survival to predicted events (BCR_Event)
+#predicted_events <- sapply(predicted_survival$time, function(x) ifelse(x <= test_data$BCR_FreeTime, 1, 0))
+
+## Print the accuracy
+accuracy <- mean(predicted_events == test_data$BCR_Event)*100
+cat('Accuracy on testing data: ', round(accuracy, 2), '%',  sep='')
+```
+A model accuracy of 30% demonstrates how poor the model is fitted in predicting the variables. This acts as a proof for the rest of other model evaluation techniques. All random forest accuracy levels fall below 30%. This demonstrates a poor perfomance.
+
+```{r}
+## Set seed for reproducibility
+set.seed(123)
+
+## Define repeated cross validation with 5 folds and three repeats
+repeat_cv <- trainControl(method='repeatedcv', number=5, repeats=5)
+
+wei11 <- survreg(Surv(BCR_FreeTime, BCR_Event) ~ Race + DxAge + PreTxPSA + RP_Type + SMS + ECE + SVI + LNI + PathGGS, 
+                          data = train_data, dist = "weibull")
+
+# Perform stepwise backwards selection
+wei22 <- step(wei11, direction = "backward", maxit = 100, trace = 0)
+
+
+## Generate predictions
+y_hats <- predict(
+        
+        ## Random forest object
+        object=wei22, 
+        
+        ## Data to use for predictions; remove the Species
+        newdata=test_data, 
+        individual = TRUE)
+
+## Convert predicted survival to predicted events (BCR_Event)
+predicted_events <- predicted_survival$time <= test_data$BCR_FreeTime
+
+## Convert predicted survival to predicted events (BCR_Event)
+#predicted_events <- sapply(predicted_survival$time, function(x) ifelse(x <= test_data$BCR_FreeTime, 1, 0))
+
+## Print the accuracy
+accuracy <- mean(predicted_events == test_data$BCR_Event)*100
+cat('Accuracy on testing data: ', round(accuracy, 2), '%',  sep='')
+```
+The weibull models have an accuracy less than 30%. This is relative to other evaluation models. the weibull models have a very poor perfomance rate. 
+
+
+```{r}
+## Gene data transposition ##
+# Transpose the dataset
+geneData2 <- t(geneData)
+
+# Set the transposed row as the new header
+colnames(geneData2) <- geneData2["GeneSymbol", ]
+
+# Convert the dataset to a dataframe
+geneData2 <- as.data.frame(geneData2)
+
+# Remove the first row since it is now the header
+geneData2 <- geneData2[-1:-2, ]
+
+# Access row names and create "Sample_ID" column
+#geneData2["Sample_ID"] <- rownames(geneData2)
+geneData2$Sample_ID <- rownames(geneData2)
+
+# Move "Sample_ID" column to the first position
+#geneData2 <- cbind(geneData2["Sample_ID"], geneData2[-1])
+geneData2 <- cbind(geneData2["Sample_ID"], geneData2[1:26447])
+
+# Optionally, remove the row names if you don't need them anymore
+row.names(geneData2) <- NULL
+
+# Convert the columns to numeric
+geneData2[, 2:26448] <- lapply(geneData2[, 2:26448], as.numeric)
+```
+
+```{r}
+##### GENE DATA CORRELATION ANALYSIS #####
+# Calculate the correlation matrix
+cor_matrix <- cor(geneData2[, 2:26448])
+
+# Identify the highly correlated variables
+highly_correlated <- findCorrelation(cor_matrix, cutoff = 0.6, names = TRUE)
+
+# Remove the highly correlated variables from the dataset
+geneData3 <- geneData2[, !colnames(geneData2) %in% highly_correlated]
+```
+
+
+
+```{r}
+# Merge clinical and gene data based on Sample_ID
+clinical_Gene.Data <- merge(clinicalData1, geneData3, by = "Sample_ID", all.x = FALSE)
+```
+
+
+```{r}
+##### GENE DATA FEATURE SELECTION #####
+geneData.Names <- colnames(clinical_Gene.Data[, 25:2855])
+
+# Create an empty data frame to store the results
+topGeneData <- data.frame(
+  Gene = character(),
+  HazardRatio = numeric(),
+  LogRankScore = numeric(),
+  PValue = numeric(),
+  AdjustedPValue = numeric(),
+  stringsAsFactors = FALSE
+  )
+
+# Create empty vectors to store results
+Gene <- geneData.Names
+HazardRatio <- c()
+LogRankScore <- c()
+PValue <- c()
+AdjustedPValue <- c()
+
+# Loop over the Cox models
+for (variable in geneData.Names) {
+  fit <- coxph(Surv(BCR_FreeTime, BCR_Event) ~ clinical_Gene.Data[, variable], data = clinical_Gene.Data, id = Sample_ID)
+
+  # Extract hazard ratio
+  hazard_ratio <- summary(fit)$coefficients[, "exp(coef)"]
+  # Extract p-value and log-rank score
+  p_value <- summary(fit)$coefficients[, "Pr(>|z|)"]
+  log_rank_score <- fit$score
+  # Adjust p-values for FDR
+  adjusted_p_value <- p.adjust(p_value, method = "fdr")
+  
+  # Append the values to the respective vectors
+  HazardRatio <- c(HazardRatio, hazard_ratio)
+  LogRankScore <- c(LogRankScore, log_rank_score)
+  PValue <- c(PValue, p_value)
+  AdjustedPValue <- c(AdjustedPValue, adjusted_p_value)
+}
+
+# Append vectors to the dataframe
+topGeneData <- rbind(topGeneData, data.frame(
+  Gene = Gene,
+  HazardRatio = HazardRatio,
+  LogRankScore = LogRankScore,
+  PValue = PValue,
+  AdjustedPValue = AdjustedPValue,
+  stringsAsFactors = FALSE
+))
+
+# Order the results based on adjusted log-rank score
+topGeneData <- topGeneData[order(topGeneData$LogRankScore, decreasing = TRUE), ]
+
+# Filter the top 50 genes with FDR-adjusted p-value less than 5%
+topGeneData50 <- topGeneData[topGeneData$AdjustedPValue < 0.05, ][1:50, ]
+```
+
+```{r}
+# Select variables 1-24 from clinical_Gene.Data
+selected_cols <- clinical_Gene.Data[, 1:24]
+
+# Extract the unique gene names from topGeneData.50
+topGeneData50.Names <- unique(topGeneData50$Gene)
+
+# Identify the column indices to be removed
+remove_cols <- setdiff(colnames(clinical_Gene.Data)[25:2855], topGeneData50.Names)
+
+# Remove the unwanted columns from clinical_Gene.Data
+clinical_Gene.Data2 <- clinical_Gene.Data[, !(colnames(clinical_Gene.Data) %in% remove_cols)]
+```
+
+
+#### CLINICAL VARIABLES AND mRNA VARIABLES ####
+
+##### COX MODEL #####
+```{r, warning=FALSE}
+cox.Model0 <- coxph(formula = Surv(BCR_FreeTime, BCR_Event) ~  1, data = clinical_Gene.Data2, id = Sample_ID)
+
+cox.Model3 <- coxph(formula = Surv(BCR_FreeTime, BCR_Event) ~  PreTxPSA + SVI + LNI + PathGGS +
+                      ABCC11 + ABCC5 + BMP6 + C5orf30 + C6orf57 + C7orf67 + C9orf45 + CD44 + CDK6 + CENPV + CHST10 + CMTM8 + CYFIP2 + DNAH8 + 
+                      DYRK2 + EFCAB4B + ESM1 + FAM13AOS + FAP + FZD5 + IRS1 + LDLR + LOC100131755 + LOC100132703 + LOC442041 + LPL + ME3 + 
+                      NIPA1 + NPAS2 + NRIP3 + PKIA + PKIB + PKP2 + PPAPDC1A + PPP2R2C + PSD3 + PTPRR + PYGO1 + RASSF3 + RELN + SGPP2 + 
+                      SLC16A14 + SPAG1 + SPRY4 + SUCNR1 + SYT9 + TIGD1 + UTS2D + ZHX3 + ZNF622, data = clinical_Gene.Data2,id = Sample_ID)
+
+cox.Model4 <-step(cox.Model0, direction = "forward", scope= formula(cox.Model3), maxit = 100, trace = 0)
+
+summary(cox.Model4)
+#tbl_regression(cox.Model4, exponentiate = TRUE)
+```
+
+```{r}
+# Examine proportional hazards assumption: assumes that the hazard ratio between two groups remains constant over time
+print(cox.zph(cox.Model4)) # Schoenfeld Residuals Test(p-value below 5% suggests evidence of violation)
+plot(cox.zph(cox.Model4)) # Schoenfeld Residuals Plot
+plot(survfit(cox.Model4), fun = "cloglog") # Log-minus-log Plot
+```
+
+
+##### WEIBULL MODEL #####
+```{r, warning=FALSE}
+weibull.Model0 <- survreg(formula = Surv(BCR_FreeTime, BCR_Event) ~  1, data = clinical_Gene.Data2, dist = "weibull")
+
+weibull.Model3 <- survreg(formula = Surv(BCR_FreeTime, BCR_Event) ~  PreTxPSA + SVI + LNI + PathGGS +
+                      ABCC11 + ABCC5 + BMP6 + C5orf30 + C6orf57 + C7orf67 + C9orf45 + CD44 + CDK6 + CENPV + CHST10 + CMTM8 + CYFIP2 + DNAH8 + 
+                      DYRK2 + EFCAB4B + ESM1 + FAM13AOS + FAP + FZD5 + IRS1 + LDLR + LOC100131755 + LOC100132703 + LOC442041 + LPL + ME3 + 
+                      NIPA1 + NPAS2 + NRIP3 + PKIA + PKIB + PKP2 + PPAPDC1A + PPP2R2C + PSD3 + PTPRR + PYGO1 + RASSF3 + RELN + SGPP2 + 
+                      SLC16A14 + SPAG1 + SPRY4 + SUCNR1 + SYT9 + TIGD1 + UTS2D + ZHX3 + ZNF622, data = clinical_Gene.Data2, dist = "weibull")
+
+weibull.Model4 <-step(weibull.Model0, direction = "forward", scope= formula(weibull.Model3), maxit = 100, trace = 0)
+
+summary(weibull.Model4)
+```
+
+```{r}
+WeibullDiag(Surv(BCR_FreeTime, BCR_Event) ~ PathGGS, data = clinical_Gene.Data2)
+WeibullDiag(Surv(BCR_FreeTime, BCR_Event) ~ LNI, data = clinical_Gene.Data2)
+```
+
+
+##### RANDOM SURVIVAL FOREST #####
+```{r, warning=FALSE}
+rsf.Model3 <- rfsrc(Surv(BCR_FreeTime, BCR_Event) ~ PreTxPSA + SVI + LNI + PathGGS +
+                      ABCC11 + ABCC5 + BMP6 + C5orf30 + C6orf57 + C7orf67 + C9orf45 + CD44 + CDK6 + CENPV + CHST10 + CMTM8 + CYFIP2 + DNAH8 + 
+                      DYRK2 + EFCAB4B + ESM1 + FAM13AOS + FAP + FZD5 + IRS1 + LDLR + LOC100131755 + LOC100132703 + LOC442041 + LPL + ME3 + 
+                      NIPA1 + NPAS2 + NRIP3 + PKIA + PKIB + PKP2 + PPAPDC1A + PPP2R2C + PSD3 + PTPRR + PYGO1 + RASSF3 + RELN + SGPP2 + 
+                      SLC16A14 + SPAG1 + SPRY4 + SUCNR1 + SYT9 + TIGD1 + UTS2D + ZHX3 + ZNF622, 
+                   data = clinical_Gene.Data2, importance = TRUE)
+
+pred <- clinical_Gene.Data2[, c("PreTxPSA", "SVI", "LNI", "PathGGS",
+                               "ABCC11", "ABCC5", "BMP6", "C5orf30", "C6orf57", "C7orf67", "C9orf45", "CD44", "CDK6", "CENPV", "CHST10", 
+                               "CMTM8", "CYFIP2", "DNAH8", "DYRK2", "EFCAB4B", "ESM1", "FAM13AOS", "FAP", "FZD5", "IRS1", "LDLR", 
+                               "LOC100131755", "LOC100132703", "LOC442041", "LPL", "ME3", "NIPA1", "NPAS2", "NRIP3", "PKIA", "PKIB", "PKP2", 
+                               "PPAPDC1A", "PPP2R2C", "PSD3", "PTPRR", "PYGO1", "RASSF3", "RELN", "SGPP2", "SLC16A14", "SPAG1", "SPRY4", 
+                               "SUCNR1", "SYT9", "TIGD1", "UTS2D", "ZHX3", "ZNF622")]
+
+
+
+ctrl <- rfeControl(functions = rfFuncs, method = "cv", number = 5)  # Set the control parameters
+rfe_results <- rfe(x = pred,  # Exclude the target variables
+                   y = clinical_Gene.Data2$BCR_Event,
+                   sizes = c(1:ncol(pred)),  # Specify the range of feature subset sizes to consider
+                   rfeControl = ctrl)
+
+rfe_results
+```
+
+
+##### BOOSTED COX #####
+```{r, warning=FALSE}
+fm <- Surv(BCR_FreeTime, BCR_Event) ~  Race + DxAge + PreTxPSA + RP_Type + SMS + ECE + SVI + LNI + PathGGS + 
+  ABCC11 + ABCC5 + BMP6 + C5orf30 + C6orf57 + C7orf67 + C9orf45 + CD44 + CDK6 + CENPV + CHST10 + CMTM8 + CYFIP2 + DNAH8 + 
+  DYRK2 + EFCAB4B + ESM1 + FAM13AOS + FAP + FZD5 + IRS1 + LDLR + LOC100131755 + LOC100132703 + LOC442041 + LPL + ME3 + 
+  NIPA1 + NPAS2 + NRIP3 + PKIA + PKIB + PKP2 + PPAPDC1A + PPP2R2C + PSD3 + PTPRR + PYGO1 + RASSF3 + RELN + SGPP2 + 
+  SLC16A14 + SPAG1 + SPRY4 + SUCNR1 + SYT9 + TIGD1 + UTS2D + ZHX3 + ZNF622
+# boosted.Model3 <- glmboost(fm, data = clinical_Gene.Data2, family = CoxPH(), control=boost_control(mstop = 500))
+boosted.Model3 <- mboost(fm, data = clinical_Gene.Data2, family = CoxPH(), control=boost_control(mstop = 100, nu = 0.1))
+summary(boosted.Model3)
+plot(varimp(boosted.Model3))
+```
+
+CROSS-VALIDATION 
+
+FOR THE COX MODEL
+
+```{r, warning=FALSE}
+# Split the data into training and testing sets (e.g., 80% training, 20% testing)
+set.seed(123)  # For reproducibility
+train_indices <- sample(1:nrow(clinical_Gene.Data2), 0.70 * nrow(clinical_Gene.Data2))
+train_data <- clinical_Gene.Data2[train_indices, ]
+test_data <- clinical_Gene.Data2[-train_indices, ]
+
+## Define repeated cross validation with 5 folds and three repeats
+repeat_cv <- trainControl(method='repeatedcv', number=5, repeats=5)
+
+cox.Model0 <- coxph(formula = Surv(BCR_FreeTime, BCR_Event) ~  1, data = train_data, id = Sample_ID)
+
+cox.Model3 <- coxph(formula = Surv(BCR_FreeTime, BCR_Event) ~  PreTxPSA + SVI + LNI + PathGGS +
+                      ABCC5 + BMP6 + C5orf30 + C6orf57 + C7orf67 + C9orf45 + CD44 + CDK6 + CENPV + CHST10 + CMTM8 + CYFIP2 + DNAH8 + 
+                      DYRK2 + EFCAB4B + ESM1 + FAM13AOS + FAP + FZD5 + IRS1 + LDLR + LOC100131755 + LOC100132703 + LOC442041 + LPL + ME3 + 
+                      NIPA1 + NPAS2 + NRIP3 + PKIA + PKIB + PKP2 + PPAPDC1A + PPP2R2C + PSD3 + PTPRR + PYGO1 + RASSF3 + RELN + SGPP2 + 
+                      SLC16A14 + SPAG1 + SPRY4 + SUCNR1 + SYT9 + TIGD1 + UTS2D + ZHX3 + ZNF622, data = train_data,id = Sample_ID)
+
+cox.Model4 <-step(cox.Model0, direction = "forward", scope= formula(cox.Model3), maxit = 100, trace = 0)
+
+
+## Generate predictions
+y_hats <- predict(
+        
+        ## Random forest object
+        object=cox.Model4, 
+        
+        ## Data to use for predictions; remove the Species
+        newdata=test_data, 
+        individual = TRUE)
+
+## Convert predicted survival to predicted events (BCR_Event)
+predicted_events <- predicted_survival$time <= test_data$BCR_FreeTime
+
+## Convert predicted survival to predicted events (BCR_Event)
+#predicted_events <- sapply(predicted_survival$time, function(x) ifelse(x <= test_data$BCR_FreeTime, 1, 0))
+
+## Print the accuracy
+accuracy <- mean(predicted_events == test_data$BCR_Event)*100
+cat('Accuracy on testing data: ', round(accuracy, 2), '%',  sep='')
+```
+
+FOR THE WEIBULL MODEL
+
+```{r, warning=FALSE}
+weibull.Model0 <- survreg(formula = Surv(BCR_FreeTime, BCR_Event) ~  1, data = train_data, dist = "weibull")
+
+weibull.Model3 <- survreg(formula = Surv(BCR_FreeTime, BCR_Event) ~  PreTxPSA + SVI + LNI + PathGGS +
+                      ABCC11 + ABCC5 + BMP6 + C5orf30 + C6orf57 + C7orf67 + C9orf45 + CD44 + CDK6 + CENPV + CHST10 + CMTM8 + CYFIP2 + DNAH8 + 
+                      DYRK2 + EFCAB4B + ESM1 + FAM13AOS + FAP + FZD5 + IRS1 + LDLR + LOC100131755 + LOC100132703 + LOC442041 + LPL + ME3 + 
+                      NIPA1 + NPAS2 + NRIP3 + PKIA + PKIB + PKP2 + PPAPDC1A + PPP2R2C + PSD3 + PTPRR + PYGO1 + RASSF3 + RELN + SGPP2 + 
+                      SLC16A14 + SPAG1 + SPRY4 + SUCNR1 + SYT9 + TIGD1 + UTS2D + ZHX3 + ZNF622, data = train_data, dist = "weibull")
+
+weibull.Model4 <-step(weibull.Model0, direction = "forward", scope= formula(weibull.Model3), maxit = 100, trace = 0)
+
+## Generate predictions
+y_hats <- predict(
+        
+        ## Random forest object
+        object=weibull.Model4, 
+        
+        ## Data to use for predictions; remove the Species
+        newdata=test_data, 
+        individual = TRUE)
+
+## Convert predicted survival to predicted events (BCR_Event)
+predicted_events <- predicted_survival$time <= test_data$BCR_FreeTime
+
+## Convert predicted survival to predicted events (BCR_Event)
+#predicted_events <- sapply(predicted_survival$time, function(x) ifelse(x <= test_data$BCR_FreeTime, 1, 0))
+
+## Print the accuracy
+accuracy <- mean(predicted_events == test_data$BCR_Event)*100
+cat('Accuracy on testing data: ', round(accuracy, 2), '%',  sep='')
+```
+
+
+
+## PREDICTION EVALUATION ##
+```{r, warning=FALSE, message=FALSE}
+library(SurvMetrics)
+library(caret)
+library(randomForestSRC)
+library(survival)  
+library(pec)
+library(ggplot2)
+library(pROC)
+library(pander)
+library(dcurves)
+set.seed(123)
+
+# Initialization
+metrics_cox = 0
+metrics_rsf = 0
+
+for (i in 1:20) {
+  mydata = clinicalData1
+  index_data = createFolds(1:nrow(mydata), 2)
+  train_data = mydata[index_data[[1]],]
+  test_data = mydata[index_data[[2]],]
+  
+  #fit the models
+  # RSF
+  fitrsf = rfsrc(Surv(BCR_FreeTime, BCR_Event) ~ DxAge + PreTxPSA + SMS + ECE + SVI + LNI + PathGGS, 
+                 data = train_data, importance = TRUE)
+  mat_rsf = predict(fitrsf, test_data)$survival
+  dis_time = fitrsf$time.interest
+  
+  # Cox
+  fitcox = coxph(formula = Surv(BCR_FreeTime, BCR_Event) ~ DxAge + PreTxPSA + SVI + LNI + PathGGS,
+                 data = train_data, id = Sample_ID, x=TRUE)
+  mat_cox = predictSurvProb(fitcox, test_data, dis_time)
+  
+  # Calculate the C index
+  med_index = median(1:length(dis_time))
+  surv_obj = Surv(test_data$BCR_FreeTime, test_data$BCR_Event)
+  
+  # C index for Cox
+  metrics_cox[i] = Cindex(surv_obj, predicted = mat_cox[, med_index])
+  # C index for RSF
+  metrics_rsf[i] = Cindex(surv_obj, predicted = mat_rsf[, med_index])
+}
+
+# C-Index tabulation
+random_forest <- metrics_rsf[i]
+random_forest
+
+cox <- metrics_cox[i]
+cox
+# Boxplots
+data_CI = data.frame('Cindex' = c(metrics_cox, metrics_rsf),
+                     'model' = c(rep('Cox', 20), rep('RSF', 20)))
+
+ggplot(data_CI, aes(x = model, y = Cindex, fill = model)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("#FFBBCC", "#88CCFF"))
+
+# Create the calibration plot for Cox model
+cox_model <- filter(data_CI, model == "Cox")
+ggplot(cox_model, aes(x = Cindex, y = Cindex - 0.5)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Calibration Predicted Plot (Cox Model)", x = "Predicted C-index", y = "Deviation from Perfect Calibration") +
+  theme_minimal()
+
+# Create the calibration plot for RSF model
+rsf_model <- filter(data_CI, model == "RSF")
+ggplot(rsf_model, aes(x = Cindex, y = Cindex - 0.5)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Calibration Plot (RSF Model)", x = "Predicted C-index", y = "Deviation from Perfect Calibration") +
+  theme_minimal()
+
+# ROC for the cox model
+
+# Get the predicted survival probabilities for test data
+cox_probs <- predictSurvProb(fitcox, test_data, dis_time)
+
+# Calculate the ROC curve using the survival probabilities and event indicator
+roc_curve <- roc(test_data$BCR_Event, cox_probs[, med_index])
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve (Cox Model)")
+
+# ROC for the random forest model
+
+# Get the predicted survival probabilities for test data
+rsf_probs <- predictSurvProb(fitrsf, test_data, dis_time)
+
+# Calculate the ROC curve using the survival probabilities and event indicator
+roc_curve <- roc(test_data$BCR_Event, rsf_probs[, med_index])
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve (Random Forest Model)")
+```
+The Cox model's median C-index is below the center of the box, indicating that, on average, the Cox model has a lower concordance (predictive performance) compared to the RSF model.
+The RSF model's median C-index is above the center of the box, indicating that, on average, the RSF model has a higher concordance (predictive performance) compared to the Cox model.
+
+
+######
+EVALUATION OF PREDICTIVE PERFOMANCE BASED ON MODELLING PIPELINES OF CALIBRATION AND DISCRIMINATION
+######
+
+To evaluate the predictive performance of the modeling pipelines based on discrimination and calibration, we can use the C-index (concordance index) for discrimination and calibration plots for calibration. The C-index measures the ability of the model to discriminate between different survival outcomes, while the calibration plot assesses how well the predicted probabilities match the observed outcomes.
+
+Discrimination (C-index):
+The C-index is a measure of how well the model's predicted survival probabilities rank patients with respect to their actual survival outcomes. It ranges from 0 to 1, where a value of 1 indicates perfect discrimination (the model perfectly ranks patients) and a value of 0.5 indicates random chance (the model's predictions are no better than random).
+
+
+The C-index value of approximately 0.808 indicates the discriminatory ability of the Cox proportional hazards model to rank patients based on their survival times.
+
+Interpretation:
+A C-index of 0.808 means that, on average, when comparing two randomly chosen patients, the model correctly ranks their predicted survival probabilities about 80.8% of the time. In other words, the model is fairly good at distinguishing patients who experience events (e.g., disease recurrence or death) at different time points during follow-up.
+
+A C-index value of 1.0 would indicate perfect discrimination, where the model perfectly ranks patients in order of their survival times. On the other hand, a C-index of 0.5 would indicate random chance, where the model's predictions are no better than random guessing.
+
+Since the model's C-index is greater than 0.5, it indicates that the model has some discriminatory power and is performing better than random chance in predicting survival outcomes for patients in the test dataset. 
+
+The C-index for the Random Forest Survival model is approximately 0.8349. This C-index value indicates the discriminatory ability of the Random Forest model to rank patients based on their survival times.
+
+Interpretation:
+A C-index of 0.8349 means that, on average, when comparing two randomly chosen patients, the Random Forest Survival model correctly ranks their predicted survival probabilities about 83.49% of the time. In other words, the model is quite effective at distinguishing patients who experience events (e.g., disease recurrence or death) at different time points during follow-up.
+
+The C-index of 0.8349 for the Random Forest model indicates that it is performing well in predicting survival outcomes for patients in the test dataset. It has a higher discriminatory ability compared to the Cox model (C-index of 0.808), which suggests that the Random Forest model is better at capturing the complexities and interactions among variables to predict survival times.
+
+

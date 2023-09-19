@@ -1,0 +1,219 @@
+---
+title: "Untitled"
+output:
+  word_document: default
+  html_document: default
+date: "2023-06-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Library Uploading
+
+```{r, message=FALSE}
+library(readxl)
+library(tidyverse)
+library(pander)
+library(psych)
+```
+
+Data Importation
+
+```{r,message=FALSE}
+#Data importation of the 1st sheet 
+data <- read_excel("Datengereinigt.xlsx", sheet = "VignetteAFinal")
+
+#Data importation of the 2nd sheet
+data2 <- read_excel("Datengereinigt.xlsx", sheet = "VignetteBFinal")
+```
+
+STEP 1
+
+Data Preprocessing
+```{r, warning=FALSE}
+# Select the variables for which you want to compute Cronbach's alpha
+variables <- data[, 2:6]
+
+# Compute Cronbach's alpha
+cronbach_alpha <- alpha(variables, check.keys=TRUE)
+cronbach_alpha
+```
+
+```{r, warning=FALSE}
+# Select the variables for which you want to compute Cronbach's alpha
+variables2 <- data2[, 2:6]
+
+# Compute Cronbach's alpha
+cronbach_alpha <- alpha(variables2, check.keys=TRUE)
+cronbach_alpha
+```
+
+STEP 2
+
+Calculating mean
+
+STEP 2
+
+```{r}
+#`I don‘t seem to be able to manage the important task related to this work.(^-1)`
+
+# Calculate the mean for Vignette A
+mean_vignette_a <- mean(data$`I don‘t seem to be able to manage the important task related to this work.(^-1)`)
+mean_vignette_a
+
+# Calculate the mean for Vignette B
+mean_vignette_b <- mean(data2$`I don‘t seem to be able to manage the important task related to this work.(^-1)`)
+mean_vignette_b
+
+# Compare the means
+if (mean_vignette_a > mean_vignette_b) {
+  cat("The average for Vignette A is higher than Vignette B for those who were not able to manage important tasks.")
+} else if (mean_vignette_a < mean_vignette_b) {
+  cat("The average for Vignette B is higher than Vignette A for those who were not able to manage important tasks.")
+} else {
+  cat("The averages for Vignette A and Vignette B are equal for those who were not able to manage important tasks.")
+} %>% pander()
+```
+```{r}
+#`Too much is expected of us.(^-1)`
+
+# Calculate the mean for Vignette A
+mean_vignette_a2 <- mean(data$`Too much is expected of us.(^-1)`)
+mean_vignette_a
+
+# Calculate the mean for Vignette B
+mean_vignette_b2 <- mean(data2$`Too much is expected of us.(^-1)`)
+mean_vignette_b
+
+# Compare the means
+if (mean_vignette_a > mean_vignette_b) {
+  cat("The average for Vignette A is higher than Vignette B for those who felt that too much was expected of them.")
+} else if (mean_vignette_a < mean_vignette_b) {
+  cat("The average for Vignette B is higher than Vignette A for those who felt that too much was expected of them.")
+} else {
+  cat("The averages for Vignette A and Vignette B are equal for those who felt that too much was expected of them.")
+} %>% pander()
+```
+
+```{r}
+#`How authoritarian was the leader?`
+
+# Calculate the mean for Vignette A
+mean_vignette_a3 <- mean(data$`How authoritarian was the leader?`)
+mean_vignette_a
+
+# Calculate the mean for Vignette B
+mean_vignette_b3 <- mean(data2$`How authoritarian was the leader?`)
+mean_vignette_b
+
+# Compare the means
+if (mean_vignette_a > mean_vignette_b) {
+  cat("The average for Vignette A is higher than Vignette B for most authoritarian leader.")
+} else if (mean_vignette_a < mean_vignette_b) {
+  cat("The average for Vignette B is higher than Vignette A for most authoritarian leader.")
+} else {
+  cat("The averages for Vignette A and Vignette B are equal for most authoritarian leader.")
+} %>% pander()
+```
+
+
+```{r}
+#`Did the leader give strict guidelines?`
+
+# Calculate the mean for Vignette A
+mean_vignette_a4 <- mean(data$`Did the leader give strict guidelines?`)
+mean_vignette_a
+
+# Calculate the mean for Vignette B
+mean_vignette_b4 <- mean(data2$`Did the leader give strict guidelines?`)
+mean_vignette_b
+
+# Compare the means
+if (mean_vignette_a > mean_vignette_b) {
+  cat("The average for Vignette A is higher than Vignette B for leaders who gave strict guidelines.")
+} else if (mean_vignette_a < mean_vignette_b) {
+  cat("The average for Vignette B is higher than Vignette A for leaders who gave strict guidelines.")
+} else {
+  cat("The averages for Vignette A and Vignette B are equal for leaders who gave strict guidelines.")
+} %>% pander()
+```
+
+Total Means for vignette A
+
+```{r}
+vignette_a <- sum(mean_vignette_a, mean_vignette_a2,mean_vignette_a3,mean_vignette_a4)
+vignette_a
+```
+Total Means for vignette B
+
+```{r}
+vignette_b <- sum(mean_vignette_b, mean_vignette_b2,mean_vignette_b3,mean_vignette_b4)
+vignette_b
+```
+
+STEP 3
+
+Hypothesis Formulation
+
+Null hypothesis (H0): Authoritarian leadership style in the home office does not lead to more employee motivation.
+
+Alternative hypothesis (HA): Authoritarian leadership style in the home office leads to more employee motivation.
+
+Explanation
+
+The null hypothesis assumes that there is no significant difference in employee motivation between those who experience an authoritarian leadership style in the home office and those who do not. The alternative hypothesis suggests that an authoritarian leadership style in the home office is associated with higher levels of employee motivation.
+
+By conducting a t-test, we can determine if there is enough evidence to reject the null hypothesis and conclude that there is a significant difference in employee motivation based on the presence or absence of an authoritarian leadership style in the home office.
+
+
+T-test for data 1
+
+```{r}
+# Perform independent t-test
+t_test_result <- t.test(data$`How authoritarian was the leader?`, data$`I want to be very good at this job.`)
+
+# Print the t-test results
+print(t_test_result) %>% pander()
+```
+
+Interpretation
+
+The results of the t-test indicate a statistically significant difference between the mean scores of the variables "How authoritarian was the leader?" and "I want to be very good at this job." The t-value is 8.7398, with a corresponding p-value of 2.502e-12.
+
+Based on these results, we reject the null hypothesis and conclude that there is a significant difference in means between the two variables. The alternative hypothesis, which suggests that an authoritarian leadership style in the home office leads to more employee motivation, is supported.
+
+The 95% confidence interval for the difference in means is calculated as 1.764802 to 2.812121. This means that we can be 95% confident that the true difference in means falls within this interval.
+
+The sample estimates show that the mean score for "How authoritarian was the leader?" (x) is 5.653846, while the mean score for "I want to be very good at this job." (y) is 3.365385. This indicates that, on average, participants who perceive a higher level of authoritarian leadership also express a stronger desire to be very good at their job.
+
+
+
+T-test for data 2
+
+```{r}
+# Perform independent t-test
+t_test_result <- t.test(data2$`How authoritarian was the leader?`, data2$`I want to be very good at this job.`)
+
+# Print the t-test results
+print(t_test_result) %>% pander()
+```
+
+Correlation Anlysis
+
+Correlation test for Vignette A
+
+
+```{r}
+cor.test(data$`I want to be very good at this job.`, data$`How authoritarian was the leader?`) %>% pander()
+```
+The correlation coefficient (-0.2232) indicates a weak negative correlation between the variables "I want to be very good at this job." and "How authoritarian was the leader?". This means that as the perception of authoritarian leadership style increases, the desire to be very good at the job tends to decrease slightly. However, the p-value (0.1117) suggests that the observed correlation could be due to chance, as it is not statistically significant at conventional significance levels (e.g., alpha = 0.05).
+
+Correlation test for Vignette B
+
+```{r}
+cor.test(data2$`I want to be very good at this job.`, data2$`How authoritarian was the leader?`) %>% pander()
+```
+Interpretation:
+The correlation coefficient (0.1478) indicates a weak positive correlation between the variables "I want to be very good at this job." and "How authoritarian was the leader?". This means that as the perception of authoritarian leadership style increases, the desire to be very good at the job tends to increase slightly. However, the p-value (0.1937) suggests that the observed correlation could be due to chance, as it is not statistically significant at conventional significance levels (e.g., alpha = 0.05).
